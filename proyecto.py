@@ -8,6 +8,7 @@ from funciones import *
 from params_vehiculo import *
 from step_model import *
 from modelo_vehiculo import *
+import json
 #from mujoco import viewer, renderer -> interaccion y representacion visual
 # Import GLFW (Graphics Library Framework) to create a window
 # and an OpenGL context.
@@ -48,29 +49,53 @@ Accel_ang_des = 0.0
 Torque_R = 0.0
 Torque_L = 0.0
 
+# inicializacion
+orientacion = np.zeros(3) # inicial [0, 0, 0]
 # inicializa controlador PID
 Kpa = 5; Kia = 0; Kda = 5
 Kpd = 1; Kid = 0.01; Kdd = 0
+estado = [0, 0, 0, 0, 0]
 # crear el controlador PID para el angulo y distancia
 pid_controller = PIDControl(Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
 
-# inicializacion
-orientacion = np.zeros(3) # inicial [0, 0, 0]
-estado = [0, 0, 0, 0, 0]
-
-# parametros controlador PID
-
-# parametros controlador LQI
-
 # inicializa controlador LQI
-estado_lqi = [0, 0, 0, 0, 0, 0, 0, 0]
-u0_lqi = [0, 0, 0, 0, 0]
 Kpa = 30; Kia = 0*Ts; Kda = 0.5/Ts
 Kpd = 2; Kid = 0*Ts; Kdd = Ts
+estado_lqi = [0, 0, 0, 0, 0, 0, 0, 0]
+u0_lqi = [0, 0, 0, 0, 0]
 # crear el controlador LQI para el angulo y distancia
 lqi_controller = LQIcontrol(estado_lqi, P0_lqi, u0_lqi, sigma_vx, sigma_wg, Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
 jacob = 'LQI aumentado'
-estado_aumentado = [0, 0, 0]
+
+# almacen de datos
+lista_tiempo = []
+# PID
+lista_senal_control_pid = []
+lista_ref_x_pid = []
+lista_ref_y_pid = []
+lista_ref_a_pid = []
+lista_err_x_pid = []
+lista_err_y_pid = []
+lista_err_a_pid = []
+lista_estado_x_pid = []
+lista_estado_y_pid = []
+lista_estado_a_pid = []
+lista_estado_v_pid = []
+lista_estado_w_pid = []
+
+# LQI
+lista_senal_control_lqi = []
+lista_ref_x_lqi = []
+lista_ref_y_lqi = []
+lista_ref_a_lqi = []
+lista_err_x_lqi = []
+lista_err_y_lqi = []
+lista_err_a_lqi = []
+lista_estado_x_lqi = []
+lista_estado_y_lqi = []
+lista_estado_a_lqi = []
+lista_estado_v_lqi = []
+lista_estado_w_lqi = []
 
 def controller(model, data):
     global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
@@ -95,18 +120,6 @@ def controller(model, data):
     orientacion[1] += vela_y * Ts
     orientacion[2] += vela_z * Ts
     estado = [posx, posy, orientacion[2], vel, vela_z]
-    
-    # variables auxiliar
-    """
-    m*accel = (1/r)*(Tau_R+Tau_L) - c*v
-    J*alpha = (W/(2*r))*(Tau_R-Tau_L) - b*omega
-    
-    accel = [a  a][Tau_R Tau_L]' con a = 1/(m*r)
-    alpha = [b -b][Tau_R Tau_L]' con b = W/(2*J*r)
-
-    Tau_R = [1/(2a)  1/(2b)][accel alpha]' = [mr/2  Jr/W][accel alpha]'
-    Tau_L = [1/(2a) -1/(2b)][accel alpha]' = [mr/2 -Jr/W][accel alpha]' 
-    """
     ref = referencias(data.time)
     if tipo_control == 0: # Manual
         Torque_R = Accel_lin_des/2 + Accel_ang_des/2
@@ -117,10 +130,35 @@ def controller(model, data):
         senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(estado, ref)
         data.ctrl[0] = senal_control[0]
         data.ctrl[1] = senal_control[1]
+        lista_senal_control_pid.append(senal_control)
+        lista_ref_x_pid.append(ref[0])
+        lista_ref_y_pid.append(ref[1])
+        lista_ref_a_pid.append(ref_angle)
+        lista_err_x_pid.append(err_posx)
+        lista_err_y_pid.append(err_posy)
+        lista_err_a_pid.append(err_a)
+        lista_estado_x_pid.append(estado[0])
+        lista_estado_y_pid.append(estado[1])
+        lista_estado_a_pid.append(estado[2])
+        lista_estado_v_pid.append(estado[3])
+        lista_estado_w_pid.append(estado[4])
     elif tipo_control == 2: # LQI
-        senal_control = lqi_controller.calcular_control(estado, ref, jacob)
+        senal_control, ref_angle, err_posx, err_posy, err_a  = lqi_controller.calcular_control(estado, ref, jacob)
         data.ctrl[0] = senal_control[0]
         data.ctrl[1] = senal_control[1]
+        lista_senal_control_lqi.append(senal_control)
+        lista_ref_x_lqi.append(ref[0])
+        lista_ref_y_lqi.append(ref[1])
+        lista_ref_a_lqi.append(ref_angle)
+        lista_err_x_lqi.append(err_posx)
+        lista_err_y_lqi.append(err_posy)
+        lista_err_a_lqi.append(err_a)
+        lista_estado_x_lqi.append(estado[0])
+        lista_estado_y_lqi.append(estado[1])
+        lista_estado_a_lqi.append(estado[2])
+        lista_estado_v_lqi.append(estado[3])
+        lista_estado_w_lqi.append(estado[4])
+    lista_tiempo.append(data.time)
 
 
 # --- Asignación del manejador del controlador ---
@@ -303,4 +341,47 @@ def main():
         # Swappear buffers de despliegue (front) y dibujo (back)
         glfw.swap_buffers(window)
     glfw.terminate()
+
+    # Crear diccionario con datos
+    if tipo_control == 0:
+        pass
+    elif tipo_control == 1:
+        datos = {
+            'Lista1': lista_tiempo,
+            'Lista2': lista_senal_control_pid,
+            'Lista3': lista_ref_x_pid,
+            'Lista4': lista_ref_y_pid,
+            'Lista5': lista_ref_a_pid,
+            'Lista6': lista_err_x_pid,
+            'Lista7': lista_err_y_pid,
+            'Lista8': lista_err_a_pid,
+            'Lista9': lista_estado_x_pid,
+            'Lista10': lista_estado_y_pid,
+            'Lista11': lista_estado_a_pid,
+            'Lista12': lista_estado_v_pid,
+            'Lista13': lista_estado_w_pid
+        }
+        # Guardar el diccionario en un archivo JSON
+        with open('listas_datos_pid.json', 'w') as file:
+            json.dump(datos, file)
+    elif tipo_control == 2:
+        datos = {
+            'Lista1': lista_tiempo,
+            'Lista2': lista_senal_control_lqi,
+            'Lista3': lista_ref_x_lqi,
+            'Lista4': lista_ref_y_lqi,
+            'Lista5': lista_ref_a_lqi,
+            'Lista6': lista_err_x_lqi,
+            'Lista7': lista_err_y_lqi,
+            'Lista8': lista_err_a_lqi,
+            'Lista9': lista_estado_x_lqi,
+            'Lista10': lista_estado_y_lqi,
+            'Lista11': lista_estado_a_lqi,
+            'Lista12': lista_estado_v_lqi,
+            'Lista13': lista_estado_w_lqi
+        }
+        # Guardar el diccionario en un archivo JSON
+        with open('listas_datos_lqi.json', 'w') as file:
+            json.dump(datos, file)
+
 if __name__ == '__main__': main()

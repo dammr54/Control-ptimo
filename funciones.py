@@ -6,6 +6,8 @@ from jacobianos_vehiculo import *
 from step_model import *
 from modelo_vehiculo import *
 from modelo_sensor import *
+import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 # control discreto PID de angulo y distancia
 class PIDControl:
     def __init__(self, Kpa, Kia, Kda, Kpd, Kid, Kdd, dt=0.01):
@@ -89,98 +91,6 @@ def referencias_circular(t, k, frecuencia=1/10):
     x = 1 + np.cos(2 * np.pi * frecuencia * t[k])  # Coordenadas x
     y = 1 + np.sin(2 * np.pi * frecuencia * t[k])  # Coordenadas y
     return [x, y]
-
-def controlador_lqi(t, k, u, Q_lqr, R_lqr, Q_k, R_k, sigma_vx, sensor, jacob, Kpos_p=0, Kpos_i=0, Kpos_d=0, Kpos_a=0, Ktheta_p=0, Ktheta_i=0, Ktheta_d=0, trayectoria='cuadrada'):
-    A, B, G, C, D, H = jacobianos_vehiculo(x_k_k[k-1,:], u[k-1,:], jacob)
-    # jacobianos modelo discreto
-    Ad = expm(A*Ts)
-    Bd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(B)
-    Gd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(G)
-    A = Ad
-    B = Bd
-    G = Gd
-    # ref
-    if trayectoria == 'cuadrada':
-        ref = referencias(k*Ts)
-        refx = ref[0]
-        refy = ref[1]
-    #elif trayectoria == 'circular':
-    #    ref = referencias_circular(t, k, 1/tf)
-    #    refx = ref[0]
-    #    refy = ref[1]
-    # error 
-    err_posx = refx - x_k_k[k,0]
-    err_posy = refy - x_k_k[k,1]
-    err_d = np.sqrt(err_posx**2 + err_posy**2)
-    ref_angle = math.atan2(err_posy, err_posx)
-    err_a = ref_angle - x_k_k[k,2]
-    # logica de calculo distancia de giro mas corta
-    if err_a < -np.pi:
-        err_a = err_a + 2*np.pi
-        ref_angle = ref_angle + 2*np.pi
-    elif err_a > np.pi:
-        err_a = err_a - 2*np.pi
-        ref_angle = ref_angle - 2*np.pi
-    ref = np.array([refx, refy, ref_angle, 0, 0])
-    #ref = ref.reshape(5, 1)
-
-    #self.prev_u_a + (self.Kpa_d + self.Kia_d + self.Kda_d)*err_a - (self.Kpa_d + 2*self.Kda_d)*self.prev_err1_a + self.Kda_d*self.prev_err2_a
-    u_pid_pos = (Kpos_p + Kpos_i + Kpos_d)*err_d - (Kpos_p + 2*Kpos_d)*prev_err1_d + Kpos_d*prev_err2_d
-    u_pid_a = (Ktheta_p + Ktheta_i + Ktheta_d)*err_a - (Ktheta_p + 2*Ktheta_d)*prev_err1_a + Ktheta_d*prev_err2_a
-    u_pid = u_pid + np.array([u_pid_pos + u_pid_a, u_pid_pos - u_pid_a])
-    ruido = np.random.normal(0, 0.0001, A.shape)  # media 0 y desviación estándar 0.1
-    A = A + ruido
-    P = solve_discrete_are(A, B, Q_lqr, R_lqr)
-    # K = (R+B^T*P*B)^{-1}*(B^T*P*A+N^T), N=0 -> 
-    K = np.linalg.inv(R_lqr+B.T.dot(P).dot(B)).dot(B.T).dot(P).dot(A)
-    #x_k_k[k,5:8] = [err_posx, err_posy, err_a]
-    #print(x_k_k)
-    u_lqr = -K.dot(x_k_k[k,:])
-    #u_lqr = -K.dot(x_aumentado)
-    u[k,:] = np.array([u_lqr[0] + u_pid[0], u_lqr[1] + u_pid[1], refx, refy, ref_angle])
-    #u[k,:] = u_lqr + u_pid*0
-    #u[k,:] = u_aux
-    # restricciones
-
-    t_aux, x_aux = step_model(modelo_vehiculo, u[k,:], 0*sigma_vx, t[k], Ts, x[k, :])
-    x = np.vstack((x,(x_aux.T)[-1,:])) # medicion real
-    # Predicción por integración exacta del modelo linealizado
-    t_aux, x_aux = step_model(modelo_vehiculo, u[k,:], sigma_vx*0, t[k], Ts, x_k_k[k,:])
-    x_k1_k_aux = (x_aux.T)[-1,:]
-    x_k1_k = np.vstack((x_k1_k, x_k1_k_aux))                             # Store x_{k|k-1}
-    z_k1_k_aux = C.dot(x_k1_k[k+1, :]) + D.dot(u[k,:])      # z_{k|k-1}
-    #x_k1_k = Ts*modelo_auto(t[k], x[k, :], lista_entradas[k,:], 0*sigma_vx) + x_k_k[k, :]
-    #z_k1_k_aux = modelo_sensor(x_k1_k[k+1, :], 0*sigma_w)
-    # prediccion de matriz de covarianza
-    P_k1_k_aux = (A.dot(P_k_k[k,:,:])).dot(A.T) + (G.dot(Q_k)).dot(G.T)  # Px_{k|k-1}
-    S_k1_k_aux = (C.dot(P_k1_k_aux)).dot(C.T) + (H.dot(R_k)).dot(H.T)    # S_{k|k-1}
-    # Actualizacion/correccion del estado y covarianza del proceso
-    z_k1_aux = modelo_sensor(x[k+1,:], sensor)           # z_{k}
-    e = z_k1_aux - z_k1_k_aux                                            # e_{k}
-    K = (P_k1_k_aux.dot(C.T)).dot(np.linalg.inv(S_k1_k_aux))             # K_{k}
-    x_k_k_aux = x_k1_k[k+1,:] + K.dot(e)                                 # x_{k|k}
-    P_k_k_aux = P_k1_k_aux - (K.dot(S_k1_k_aux)).dot(K.T)                # P_{k|k}
-    z_k = np.vstack((z_k, z_k1_aux))                                     # Store z_{k}
-    x_k_k = np.vstack((x_k_k, x_k_k_aux))                                # Store x_{k|k}
-    P_k_k = np.vstack((P_k_k, P_k_k_aux[np.newaxis,...]))                # Store P_{k|k}
-
-    # --- Actualiza el gráfico de simulación ---
-    #x_r = np.array([[ref[0], ref[1], ref_angle]])
-    #UpdatePlot(fig1, x, x_k_k, z_k, x_r)
-    #lista_ref_x.append(refx)
-    #lista_ref_y.append(refy)
-    #lista_ref_a.append(ref_angle)
-    #lista_error_posicion.append(err_d)
-    #lista_error_rumbo.append(err_a)
-    prev_err2_a = prev_err1_a
-    prev_err1_a = err_a
-    prev_err2_d = prev_err1_d
-    prev_err1_d = err_d
-    #fo = funcion_objetivo(x_k_k[k,:], u[k,:], Q_lqr, R_lqr, ref)
-    #lista_valor_fo.append(fo)
-    #print(k*Ts)
-    return 
-
 
 # controlador LQI
 class LQIcontrol:
@@ -293,7 +203,7 @@ class LQIcontrol:
         #fo = funcion_objetivo(x_k_k[k,:], u[k,:], Q_lqr, R_lqr, ref)
         #lista_valor_fo.append(fo)
         #print(k*Ts)
-        return self.u_prev
+        return self.u_prev.tolist(), ref_angle, err_posx, err_posy, err_a
     
 
 def filtro_kalman_extendido(x0, P0, sigma_v, Q_k, R_k, lista_entradas, sensor):
@@ -337,3 +247,111 @@ def filtro_kalman_extendido(x0, P0, sigma_v, Q_k, R_k, lista_entradas, sensor):
         z_k = np.vstack((z_k, z_k1_aux))                                     # Store z_{k}
         x_k_k = np.vstack((x_k_k, x_k_k_aux))                                # Store x_{k|k}
         P_k_k = np.vstack((P_k_k, P_k_k_aux[np.newaxis,...]))                # Store P_{k|k}
+
+    
+# graficos
+## grafico de posicion x versus y con vector de orientacion
+def grafico_xy_orientacion(lista_x, lista_y, lista_ref_x, lista_ref_y):
+    x = lista_x
+    y = lista_y
+    dx = np.diff(x)/max(np.diff(x))
+    dy = np.diff(y)/max(np.diff(y))
+    origen_x = x[:-1]
+    origen_y = y[:-1]
+    fig0, ax = plt.subplots()
+    fig0.canvas.manager.set_window_title('Trayectoria')
+    ax.plot(x, y, 'o-', label='Posición', zorder=1)
+    ax.plot(lista_ref_x, lista_ref_y, '--k', label='referencia')
+    ax.quiver(origen_x, origen_y, dx, dy, scale=2, scale_units='xy', angles='xy', color='r', label='Vector de dirección', zorder = 5)
+    ax.set_xlim(min(x) - 1, max(x) + 1)
+    ax.set_ylim(min(y) - 1, max(y) + 1)
+    ax.set_title('Trayectoria X versus Y')
+    ax.set_xlabel('X [m]')
+    ax.set_ylabel('Y [m]')
+    ax.legend()
+    plt.show()
+## grafico de torques de entrada para cada actuador
+def grafico_torques_entrada(t, lista_entradas):
+    fig1, (ax1, ax2) = plt.subplots(2, 1)
+    fig1.canvas.manager.set_window_title('Entradas')
+    ax1.plot(t, lista_entradas[:, 0], 'r')
+    ax1.set_title('Entrada actuador derecho')
+    ax1.set_ylabel('Td [Nm]')
+    ax2.plot(t, lista_entradas[:, 1], 'b')
+    ax2.set_title('Entrada actuador izquierdo')
+    ax2.set_xlabel('Tiempo [s]')
+    ax2.set_ylabel('Ti [Nm]')
+    plt.tight_layout()
+    plt.show()
+### grafico de variables de estado
+def grafico_estado(t, lista_x, lista_ref_x, lista_ref_y, lista_ref_angle):
+    titles = ['Posición X [m]', 'Posición Y [m]', 'Ángulo [°]', 'Velocidad angular [rad/s]', 'Velocidad lineal [m/s]', 'Error x', 'Error y', 'Error theta']
+    colors = ['r', 'b', 'g', 'm', 'c', 'k', 'r', 'r', 'r']
+    for i in range(len(lista_x)):
+        fig2, axs = plt.subplots()
+        fig2.canvas.manager.set_window_title('Variables de Estado')
+        if i == 0:
+            axs.plot(t, lista_x[i, :], colors[i])
+            axs.plot(t, lista_ref_x, '--k')
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('X [m]')
+            pass
+        elif i == 1:
+            axs.plot(t, lista_x[i, :], colors[i])
+            axs.plot(t, lista_ref_y, '--k')
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('Y (m)')
+        elif i == 2:
+            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i], label='Ángulo [°]')
+            axs.plot(t, lista_ref_angle*180/np.pi, 'k--', label='Referencia')
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('theta [°]')
+        elif i == 3:
+            axs.plot(t, lista_x[i, :], colors[i])
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('V [m/s]')
+        elif i == 4:
+            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('w [°/s]')
+        elif i == 5:
+            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('w [°/s]')
+        elif i == 6:
+            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('w [°/s]')
+        elif i == 7:
+            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.set_title(titles[i])
+            axs.set_xlabel('Tiempo [s]')
+            axs.set_ylabel('w [°/s]')
+        plt.show()
+### perfil de aceleracion
+def grafico_aceleracion(t, lista_x):
+    velocidad_lineal = lista_x[3, :]
+    aceleracion_lineal = np.diff(velocidad_lineal)
+    fig2 = plt.figure()
+    fig2.canvas.manager.set_window_title('Perfil de aceleración lineal')
+    plt.plot(t[:-1], aceleracion_lineal, 'r')
+    plt.title('Perfil de aceleración lineal')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('a [m/s^2]')
+    plt.show()
+    velocidad_angular = lista_x[4, :]
+    aceleracion_angular = np.diff(velocidad_angular)
+    fig2 = plt.figure()
+    fig2.canvas.manager.set_window_title('Perfil de aceleración lineal')
+    plt.plot(t[:-1], aceleracion_angular*180/np.pi, 'r')
+    plt.title('Perfil de aceleración angular')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('alpha [°/s^2]')
+    plt.show()
