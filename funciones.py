@@ -65,17 +65,22 @@ class PIDControl:
         return senal_control, ref_angle, err_d, err_a
     
 
-def referencias(t, t1=1.05, t2=1.7, t3=2.2, t4=2.55):
+def referencias(t, t1=1.05, t2=5, t3=10, t4=15):
     if t < t1:
         ref = [1, 1]
         #ref = [0, 2]
+        ref = [1, 1] # -
     elif t >= t1 and t < t2:
         ref = [-1, 1]
+        ref = [1, 1] # -
     elif t >= t2 and t < t3:
         ref = [-1, -1]
         #ref = [2, 0]
+        ref = [1, 1] # -
     elif t >= t3 and t < t4:
         ref = [1, -1]
+        ref = [1, 1] # -
     elif t >= t4:
         ref = [1, 1]
+        ref = [1, 1] # -
     return ref

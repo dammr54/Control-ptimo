@@ -1,63 +1,91 @@
-# Added GLFW keyboard and mouse handlers following the example in:
-# https://github.com/tayalmanan28/MuJoCo-Tutorial/blob/main/mujoco_base.py
-#
-import mujoco # Note does not need mujoco.viewer like the other examples
-#from mujoco import viewer, renderer
-
+import mujoco as mj
+# Import GLFW (Graphics Library Framework) to create a window and an OpenGL context.
+from mujoco.glfw import glfw
+import OpenGL.GL as gl
+import time
+import numpy as np
+from funciones import *
+from params_vehiculo import *
+from step_model import *
+from modelo_vehiculo import *
+#from mujoco import viewer, renderer -> interaccion y representacion visual
 # Import GLFW (Graphics Library Framework) to create a window
 # and an OpenGL context.
 #import glfw  # conda install conda-forge::glfw
-from mujoco.glfw import glfw # MuJoCo 3.1.1 includes glfw
-import OpenGL.GL as gl
-
-import time
-import numpy as np
-
-
-# --- Definición de un modelo ---
-
-xml_path = "car1.xml"
-
-# --- MuJoCo data structures: modelo, camara, opciones de visualizacion ---
-
-model = mujoco.MjModel.from_xml_path(xml_path) # MuJoCo model
-data = mujoco.MjData(model)                 # MuJoCo data
-cam = mujoco.MjvCamera()                    # Abstract camera
-opt = mujoco.MjvOption()                    # Visualization options
-#print(model.opt.timestep)
-#model.opt.timestep = 0.001
-
-
-data.qpos[0] =  -0.5
-data.qpos[1] =   1.0
-
+xml_path = "car1.xml" # direccion del modelo
+t_sim = 10 # tiempo simulacion
+# MuJoCo data structures: modelo, camara, opciones de visualizacion ---
+model = mj.MjModel.from_xml_path(xml_path) # MuJoCo model
+data = mj.MjData(model) # MuJoCo data
+cam = mj.MjvCamera() # Abstract camara
+opt = mj.MjvOption() # opciones de visualizacion
+data.qpos[0] = 0 # pos x
+data.qpos[1] = 0 # pos y
+data.qpos[2] = 0 # pos z
+data.qpos[3] = 0 # 
+data.qpos[4] = 0 # roll
+data.qpos[5] = 0 # pitch
+data.qpos[6] = 0 # yaw
+data.qpos[7] = 0 # 
+data.qpos[8] = 0 # 
 # Set camera configuration
-cam.azimuth = 89.608063
-cam.elevation = -11.588379
-cam.distance = 5.0
-cam.lookat = np.array([0.0, 0.0, 1.5])
-
-# Initialize visualization data structures
-#mujoco.mjv_defaultCamera(cam)
-mujoco.mjv_defaultOption(opt)
-scene = mujoco.MjvScene(model, maxgeom=10000)
-        
+cam.azimuth = 90 # angulo de vista 
+cam.elevation = -11 # elevacion
+cam.distance = 7.0 # distancia
+cam.lookat = np.array([0.0, 0.0, 0]) # hacia donde mira la camara
+# inicializar estructuras de datos de visualización
+mj.mjv_defaultOption(opt)
+scene = mj.MjvScene(model, maxgeom=10000) # tamaño maximo de geometrias
 # Actualización cinemática
-#mujoco.mj_kinematics(model, data)
-mujoco.mj_forward(model, data)
+mj.mj_forward(model, data)
 
-
-# --- Definición del controlador ---
-
-automatic = False
+# definición del controlador
+# manual
 Accel_lin_des = 0.0
 Accel_ang_des = 0.0
+# automatico
+automatic = True
 Torque_R = 0.0
 Torque_L = 0.0
 
+# inicializa controlador
+Kpa = 5; Kia = 0; Kda = 5*0
+Kpd = 0; Kid = 0.01*0; Kdd = 0
+# crear el controlador PID para el angulo y distancia
+pid_controller = PIDControl(Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
+
+# inicializacion
+orientacion = np.zeros(3) # inicial [0, 0, 0]
+x = [0, 0, 0, 0, 0]
+
 def controller(model, data):
-    global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L
+    global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
+    # posicion
+    posx = data.qpos[0]
+    posy = data.qpos[1]
+    posz = data.qpos[2]
+    # velocidad
+    velx = data.sensor('sensor_vel').data[0]
+    vely = data.sensor('sensor_vel').data[1]
+    vel = np.sqrt(velx**2 + vely**2)
+    velz = data.sensor('sensor_vel').data[2]
+    vela_x = data.sensor('sensor_gyro').data[0]
+    vela_y = data.sensor('sensor_gyro').data[1]
+    vela_z = data.sensor('sensor_gyro').data[2]
+    # aceleracion
+    acex = data.sensor('sensor_accel').data[0]
+    acey = data.sensor('sensor_accel').data[1]
+    acez = data.sensor('sensor_accel').data[2]
+    # integracion giroscopio
+    orientacion[0] += vela_x * Ts
+    orientacion[1] += vela_y * Ts
+    orientacion[2] += (vela_z * Ts)
+    # orientacion trigonometria
+
+    estado = [posx, posy, orientacion[2], vel, vela_z]
     
+    # variables auxiliar
+    sigma_vx = np.array([10**(-4), 10**(-4), 3*10**(-4), 0.01, 0.03])
     """
     m*accel = (1/r)*(Tau_R+Tau_L) - c*v
     J*alpha = (W/(2*r))*(Tau_R-Tau_L) - b*omega
@@ -70,15 +98,22 @@ def controller(model, data):
     """
     
     if automatic: 
-        # """
-        # Place you controller here.
-        # """
+        ref = referencias(data.time)
+        #print(x)
+        senal_control, ref_angle, err_d, err_a = pid_controller.calcular_control(estado, ref)
+        t_aux, xaux = step_model(modelo_vehiculo, senal_control, sigma_vx, data.time, Ts, estado)
+        #x = xaux[:,-1]
+
+        #print(err_a*180/np.pi)
         Torque_R = Accel_lin_des/2 + Accel_ang_des/2
         Torque_L = Accel_lin_des/2 - Accel_ang_des/2
-        data.ctrl[0] = Torque_R #data.qpos[0] + dq[0, 0] # q1 position servo 1
-        data.ctrl[1] = Torque_L #data.qpos[1] + dq[1, 0] # q2 position servo 2
-    
+        data.ctrl[0] = senal_control[0] #data.qpos[0] + dq[0, 0] # q1 position servo 1
+        data.ctrl[1] = senal_control[1] #data.qpos[1] + dq[1, 0] # q2 position servo 2
+        #print(x[2]*180/np.pi)
     else: # Manual
+        #print(estado)
+        #print(orientacion[2])
+        #print(data.sensor('sensor_gyro').data)
         Torque_R = Accel_lin_des/2 + Accel_ang_des/2
         Torque_L = Accel_lin_des/2 - Accel_ang_des/2
         data.ctrl[0] = Torque_R
@@ -88,7 +123,7 @@ def controller(model, data):
     return None
 
 # --- Asignación del manejador del controlador ---
-mujoco.set_mjcb_control(controller)
+mj.set_mjcb_control(controller)
  
 # --- Definición de las funciones manejadoras (handlers) de callbacks de GFLW ---
 mouse_button_left   = False
@@ -102,8 +137,8 @@ def keyboard(window, key, scancode, act, mods):
     global Accel_lin_des, Accel_ang_des
     
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
-        mujoco.mj_resetData(model, data)
-        mujoco.mj_forward(model, data)
+        mj.mj_resetData(model, data)
+        mj.mj_forward(model, data)
         Accel_lin_des = 0
         Accel_ang_des = 0
     
@@ -141,16 +176,16 @@ def keyboard(window, key, scancode, act, mods):
 
         if key == glfw.KEY_UP:
             print('Up')
-            Accel_lin_des += 10
+            Accel_lin_des += 1
         if key == glfw.KEY_DOWN:
             print('Down')
-            Accel_lin_des -= 10
+            Accel_lin_des -= 1
         if key == glfw.KEY_LEFT:
             print('Left')
-            Accel_ang_des += 10
+            Accel_ang_des += 1
         if key == glfw.KEY_RIGHT:
             print('Right')
-            Accel_ang_des -= 10
+            Accel_ang_des -= 1
         if key == glfw.KEY_ESCAPE:
             print('Bye!')
             glfw.set_window_should_close(window, True) 
@@ -175,8 +210,8 @@ def mouse_button(window, button, act, mods):
 
 
 def mouse_scroll(window, xoffset, yoffset):
-    action = mujoco.mjtMouse.mjMOUSE_ZOOM
-    mujoco.mjv_moveCamera(model, action, 0.0, -0.05*yoffset, scene, cam)
+    action = mj.mjtMouse.mjMOUSE_ZOOM
+    mj.mjv_moveCamera(model, action, 0.0, -0.05*yoffset, scene, cam)
     #print('Mouse scroll')
 
 
@@ -206,138 +241,65 @@ def mouse_move(window, xpos, ypos):
     # Determine action based on mouse button
     if mouse_button_right:
         if mod_shift:
-            action = mujoco.mjtMouse.mjMOUSE_MOVE_H
+            action = mj.mjtMouse.mjMOUSE_MOVE_H
         else:
-            action = mujoco.mjtMouse.mjMOUSE_MOVE_V
+            action = mj.mjtMouse.mjMOUSE_MOVE_V
     elif mouse_button_left:
         if mod_shift:
-            action = mujoco.mjtMouse.mjMOUSE_ROTATE_H
+            action = mj.mjtMouse.mjMOUSE_ROTATE_H
         else:
-            action = mujoco.mjtMouse.mjMOUSE_ROTATE_V
+            action = mj.mjtMouse.mjMOUSE_ROTATE_V
     else:
-        action = mujoco.mjtMouse.mjMOUSE_ZOOM
+        action = mj.mjtMouse.mjMOUSE_ZOOM
 
-    mujoco.mjv_moveCamera(model, action, dx/height, dy/height, scene, cam)
+    mj.mjv_moveCamera(model, action, dx/height, dy/height, scene, cam)
 
 
-# --- Inicialización del motor gráfico OpenGL via funciones GLFW ---
+# Inicialización del motor gráfico OpenGL via funciones GLFW
 def glfw_init():
     width, height = 1280, 720
-    window_name = 'Ejemplo de ventana GLFW'
+    window_name = 'Vehiculo de tracción diferencial'
     if not glfw.init():
-        print("Could not initialize OpenGL context")
+        print("No se pudo inicializar el contexto OpenGL")
         exit(1)
     
-    # Do not use these lines... pyopengl from Anaconda os 3.1.1
-    # since Nov. 2023 and at list today (2024.03.09). 
-    # OS X supports only forward-compatible core profiles from 3.2
-    #glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
-    #glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-    #glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-    #glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, gl.GL_TRUE)
-    
-    # Create a windowed mode window and its OpenGL context
-    window = glfw.create_window( int(width), int(height), window_name, None, None)
-        
+    # Crear una ventana y su contexto OpenGL
+    window = glfw.create_window(int(width), int(height), window_name, None, None)
     if not window:
         glfw.terminate()
-        print("Could not initialize GLFW window")
+        print("No se pudo inicializar la ventana GLFW")
         exit(1)
     
     glfw.make_context_current(window)
-    glfw.swap_interval(1) # Request (activate) v-sync
-                          # https://discourse.glfw.org/t/newbie-questions-trying-to-understand-glfwswapinterval/1287
- 
-
-    # Declare GLFW mouse and keyboard callback handlers
+    glfw.swap_interval(1) # Solicitar (activar) v-sync
+    # Declarar manejadores de devolución de llamadas de teclado y mouse GLFW
     glfw.set_key_callback(window, keyboard)
     glfw.set_cursor_pos_callback(window, mouse_move)
     glfw.set_mouse_button_callback(window, mouse_button)
     glfw.set_scroll_callback(window, mouse_scroll)
- 
     #glfw.set_input_mode(window, glfw.LOCK_KEY_MODS, glfw.FALSE)
-    
     return window
-    
-# A standard GLFW graphics rendering loop has the following structure.
-# See example at: https://pypi.org/project/glfw/
-#
-# window = glfw_init() # Create a window and its OpenGL context
-# 
-# while not glfw.window_should_close(window):
-#     # Poll for and process events
-#     glfw.poll_events()
-#
-#     # Render someting here, e.g. using pyOpenGL
-#     gl.glClearColor(1., 1., 1., 1)
-#     gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-#
-#     # Swap front and back buffers
-#     glfw.swap_buffers(window)
-#
-# glfw.terminate() 
-#
-
 def main():
+    # Un bucle de renderizado de gráficos GLFW estándar
     #global model, data, scene, context, opt, cam
-
-    window = glfw_init()
-    
-    # WARNING: MuJoCo OpenGL context cannot be created using MjrContext
-    #          before creating a window with glfw or OpenGL.
-    # Therefore the following function cannot be invoked before the 
-    # main(). However, note that it is possible to create an MjvScene 
-    # before creating a window with glfw and assigning an OpenGL context.
-    # In fact, the "scene" with all geometrical objects can exist without
-    # ever "painting" (rendering) the scene onto a given context.
-    context = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150.value)    
-    
-    # Loop de visualización GLFW
-    # Ver ejemplos básicos en:
-    # https://codeloop.org/python-modern-opengl-glfw-window/
-    # https://www.programcreek.com/python/example/124904/glfw.window_should_close
-    # https://medium.com/@shashankdwivedi6386/pyopengl-creating-simple-window-in-python-9ae3b10f6355
-    # https://github.com/tayalmanan28/MuJoCo-Tutorial/blob/main/examples/control_pendulum.py
+    window = glfw_init() # Crear una ventana y su contexto OpenGL
+    context = mj.MjrContext(model, mj.mjtFontScale.mjFONTSCALE_150.value)    
     while not glfw.window_should_close(window):
         # Obtener y ejecutar eventos
         glfw.poll_events()
-                
         # Actualizar la simulación en un paso
-        mujoco.mj_step(model, data)
-        
-        # Obtenemos algunos datos de sensores
-        # Notar que algunos datos se pueden obtener directamente de variables
-        # de estado como qpos, qvel sin necesidad de crear un sensor
-        # Ver: https://github.com/google-deepmind/mujoco/blob/main/include/mujoco/mjdata.h
-        print('Position-site_xpos: ', data.site_xpos[0])
-        print('Position-qpos: ', data.qpos[0], data.qpos[1], data.qpos[2]) 
-        print('Velocity-sensor: ', data.sensor('sensor_vel').data)
-        print('Velocity-qvel  : ', data.qvel[0], data.qvel[1], data.qvel[2],)
-        
-        print('Acceleration-sensor: ', data.sensor('sensor_accel').data)
-        print('Acceleration-qacc  : ', data.qacc[0], data.qacc[1], data.qacc[2])
-        print('Gyro: ', data.sensor('sensor_gyro').data)
-
-        #print('Sensor data: ', data.sensordata)
-        
-        
+        mj.mj_step(model, data)
         # Get framebuffer viewport
         viewport_width, viewport_height = glfw.get_framebuffer_size(window)
-        viewport = mujoco.MjrRect(0, 0, viewport_width, viewport_height)
-
+        viewport = mj.MjrRect(0, 0, viewport_width, viewport_height)
         # Update scene and render
-        mujoco.mjv_updateScene(model, data, opt, None, cam,
-                               mujoco.mjtCatBit.mjCAT_ALL.value, scene)
-        mujoco.mjr_render(viewport, scene, context)
-
+        mj.mjv_updateScene(model, data, opt, None, cam,
+                               mj.mjtCatBit.mjCAT_ALL.value, scene)
+        mj.mjr_render(viewport, scene, context)
         # Colorear el fondo del canvas
         #gl.glClearColor(1., 1., 1., 1)
         #gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
         # Swappear buffers de despliegue (front) y dibujo (back)
         glfw.swap_buffers(window)
- 
     glfw.terminate()
- 
- 
 if __name__ == '__main__': main()
