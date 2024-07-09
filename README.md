@@ -17,3 +17,6 @@ Proyecto de curso IEE3936 Estimación y Control Óptimo para la Robótica
 
 ## Definición vehículo en MuJoCo:
 - `car1.xml`
+
+## Documento extra con algunos comentarios de explicación:
+- `apuntes_codigo.py`

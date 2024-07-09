@@ -11,7 +11,25 @@ J = 1 # m/12*(L^2 + W^2) + 2 J_w(W/2)^2
 c = 0.3 # efectos de friccion dinamica (roce aerodinamico y resistencia viscosa) sentido longitudinal
 b = 0.3 # efectos de friccion dinamica (roce aerodinamico y resistencia viscosa) sentido eje de giro
 
-# matrices 
+# matriz de covarianza del estado estimado
+P0 = np.array([[0.01, 0, 0, 0, 0],
+               [0, 0.01, 0, 0, 0],
+               [0, 0, 0.03, 0, 0],
+               [0, 0, 0, 0.01, 0],
+               [0, 0, 0, 0, 0.03]])
+P0_lqi = np.array([[0.01, 0, 0, 0, 0, 0, 0, 0],
+                   [0, 0.01, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0.03, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0.01, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0.03, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 1, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 1, 0],
+                   [0, 0, 0, 0, 0, 0, 0, 1],])
+
+# matrices
+sigma_vx = np.array([10**(-4), 10**(-4), 3*10**(-4), 0.01, 0.03])
+
+
 # ruido en los sensores (tacometro) iid -> medicion de velocidades
 sigma_wt = np.array([10**(-4), 10**(-4)])
 Rt = np.array([[0, 0, 0, 0, 0],

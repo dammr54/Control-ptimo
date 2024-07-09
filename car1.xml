@@ -16,8 +16,7 @@
 		<!-- <geom type="plane" size="1 1 0.1" rgba=".9 0 0 1"/> -->
 		
 		<geom type="plane" size="1 1 0.1" material="grid"/>
-		
-		<geom type="mesh" mesh="tetrahedron" pos="2 0 0" euler="0 0 135" rgba="1 0 0 1" />
+	
 		
 		<!-- Begin chassis -->
 		<body name="chassis" pos="0 0 0" euler="0 0 0">

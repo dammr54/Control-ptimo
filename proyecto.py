@@ -40,15 +40,15 @@ scene = mj.MjvScene(model, maxgeom=10000) # tamaño maximo de geometrias
 mj.mj_forward(model, data)
 
 # definición del controlador
+tipo_control = 2 # 0: manual, 1: PID, 2: LQI
 # manual
 Accel_lin_des = 0.0
 Accel_ang_des = 0.0
 # automatico
-automatic = True
 Torque_R = 0.0
 Torque_L = 0.0
 
-# inicializa controlador
+# inicializa controlador PID
 Kpa = 5; Kia = 0; Kda = 5
 Kpd = 1; Kid = 0.01; Kdd = 0
 # crear el controlador PID para el angulo y distancia
@@ -57,6 +57,20 @@ pid_controller = PIDControl(Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
 # inicializacion
 orientacion = np.zeros(3) # inicial [0, 0, 0]
 estado = [0, 0, 0, 0, 0]
+
+# parametros controlador PID
+
+# parametros controlador LQI
+
+# inicializa controlador LQI
+estado_lqi = [0, 0, 0, 0, 0, 0, 0, 0]
+u0_lqi = [0, 0, 0, 0, 0]
+Kpa = 30; Kia = 0*Ts; Kda = 0.5/Ts
+Kpd = 2; Kid = 0*Ts; Kdd = Ts
+# crear el controlador LQI para el angulo y distancia
+lqi_controller = LQIcontrol(estado_lqi, P0_lqi, u0_lqi, sigma_vx, sigma_wg, Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
+jacob = 'LQI aumentado'
+estado_aumentado = [0, 0, 0]
 
 def controller(model, data):
     global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
@@ -83,7 +97,6 @@ def controller(model, data):
     estado = [posx, posy, orientacion[2], vel, vela_z]
     
     # variables auxiliar
-    sigma_vx = np.array([10**(-4), 10**(-4), 3*10**(-4), 0.01, 0.03])
     """
     m*accel = (1/r)*(Tau_R+Tau_L) - c*v
     J*alpha = (W/(2*r))*(Tau_R-Tau_L) - b*omega
@@ -94,32 +107,21 @@ def controller(model, data):
     Tau_R = [1/(2a)  1/(2b)][accel alpha]' = [mr/2  Jr/W][accel alpha]'
     Tau_L = [1/(2a) -1/(2b)][accel alpha]' = [mr/2 -Jr/W][accel alpha]' 
     """
-    
-    if automatic: 
-        ref = referencias(data.time)
-        #print(x)
-        senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(estado, ref)
-        #print(ref_angle, err_posx, err_posy, err_a)
-        t_aux, xaux = step_model(modelo_vehiculo, senal_control, sigma_vx, data.time, Ts, estado)
-        #x = xaux[:,-1]
-
-        #print(err_a*180/np.pi)
-        Torque_R = Accel_lin_des/2 + Accel_ang_des/2
-        Torque_L = Accel_lin_des/2 - Accel_ang_des/2
-        data.ctrl[0] = senal_control[0] #data.qpos[0] + dq[0, 0] # q1 position servo 1
-        data.ctrl[1] = senal_control[1] #data.qpos[1] + dq[1, 0] # q2 position servo 2
-        #print(x[2]*180/np.pi)
-    else: # Manual
-        #print(estado)
-        #print(orientacion[2])
-        #print(data.sensor('sensor_gyro').data)
+    ref = referencias(data.time)
+    if tipo_control == 0: # Manual
         Torque_R = Accel_lin_des/2 + Accel_ang_des/2
         Torque_L = Accel_lin_des/2 - Accel_ang_des/2
         data.ctrl[0] = Torque_R
         data.ctrl[1] = Torque_L
-        
-    
-    return None
+    elif tipo_control == 1: # PID
+        senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(estado, ref)
+        data.ctrl[0] = senal_control[0]
+        data.ctrl[1] = senal_control[1]
+    elif tipo_control == 2: # LQI
+        senal_control = lqi_controller.calcular_control(estado, ref, jacob)
+        data.ctrl[0] = senal_control[0]
+        data.ctrl[1] = senal_control[1]
+
 
 # --- Asignación del manejador del controlador ---
 mj.set_mjcb_control(controller)
