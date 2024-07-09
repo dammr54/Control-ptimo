@@ -49,14 +49,14 @@ Torque_R = 0.0
 Torque_L = 0.0
 
 # inicializa controlador
-Kpa = 5; Kia = 0; Kda = 5*0
-Kpd = 0; Kid = 0.01*0; Kdd = 0
+Kpa = 5; Kia = 0; Kda = 5
+Kpd = 1; Kid = 0.01; Kdd = 0
 # crear el controlador PID para el angulo y distancia
 pid_controller = PIDControl(Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
 
 # inicializacion
 orientacion = np.zeros(3) # inicial [0, 0, 0]
-x = [0, 0, 0, 0, 0]
+estado = [0, 0, 0, 0, 0]
 
 def controller(model, data):
     global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
@@ -71,7 +71,7 @@ def controller(model, data):
     velz = data.sensor('sensor_vel').data[2]
     vela_x = data.sensor('sensor_gyro').data[0]
     vela_y = data.sensor('sensor_gyro').data[1]
-    vela_z = data.sensor('sensor_gyro').data[2]
+    vela_z = data.sensor('sensor_gyro').data[2]/25 *2*np.pi # arreglo de escala
     # aceleracion
     acex = data.sensor('sensor_accel').data[0]
     acey = data.sensor('sensor_accel').data[1]
@@ -79,9 +79,7 @@ def controller(model, data):
     # integracion giroscopio
     orientacion[0] += vela_x * Ts
     orientacion[1] += vela_y * Ts
-    orientacion[2] += (vela_z * Ts)
-    # orientacion trigonometria
-
+    orientacion[2] += vela_z * Ts
     estado = [posx, posy, orientacion[2], vel, vela_z]
     
     # variables auxiliar
@@ -100,7 +98,8 @@ def controller(model, data):
     if automatic: 
         ref = referencias(data.time)
         #print(x)
-        senal_control, ref_angle, err_d, err_a = pid_controller.calcular_control(estado, ref)
+        senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(estado, ref)
+        #print(ref_angle, err_posx, err_posy, err_a)
         t_aux, xaux = step_model(modelo_vehiculo, senal_control, sigma_vx, data.time, Ts, estado)
         #x = xaux[:,-1]
 
