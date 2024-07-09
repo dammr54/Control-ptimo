@@ -203,7 +203,7 @@ class LQIcontrol:
         #fo = funcion_objetivo(x_k_k[k,:], u[k,:], Q_lqr, R_lqr, ref)
         #lista_valor_fo.append(fo)
         #print(k*Ts)
-        return self.u_prev.tolist(), ref_angle, err_posx, err_posy, err_a
+        return self.u_prev.tolist(), ref_angle, err_posx, err_posy, err_a, self.int_err_posx, self.int_err_posy, self.int_err_a
     
 
 def filtro_kalman_extendido(x0, P0, sigma_v, Q_k, R_k, lista_entradas, sensor):
@@ -285,7 +285,7 @@ def grafico_torques_entrada(t, lista_entradas):
     plt.show()
 ### grafico de variables de estado
 def grafico_estado(t, lista_x, lista_ref_x, lista_ref_y, lista_ref_angle):
-    titles = ['Posición X [m]', 'Posición Y [m]', 'Ángulo [°]', 'Velocidad angular [rad/s]', 'Velocidad lineal [m/s]', 'Error x', 'Error y', 'Error theta']
+    titles = ['Posición X [m]', 'Posición Y [m]', 'Ángulo [°]', 'Velocidad angular [rad/s]', 'Velocidad lineal [m/s]', 'Integral error x', 'Integral error y', 'Integral error theta']
     colors = ['r', 'b', 'g', 'm', 'c', 'k', 'r', 'r', 'r']
     for i in range(len(lista_x)):
         fig2, axs = plt.subplots()
@@ -320,20 +320,20 @@ def grafico_estado(t, lista_x, lista_ref_x, lista_ref_y, lista_ref_angle):
             axs.set_xlabel('Tiempo [s]')
             axs.set_ylabel('w [°/s]')
         elif i == 5:
-            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.plot(t, lista_x[i, :], colors[i])
             axs.set_title(titles[i])
             axs.set_xlabel('Tiempo [s]')
-            axs.set_ylabel('w [°/s]')
+            axs.set_ylabel('Integral error x')
         elif i == 6:
-            axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
+            axs.plot(t, lista_x[i, :], colors[i])
             axs.set_title(titles[i])
             axs.set_xlabel('Tiempo [s]')
-            axs.set_ylabel('w [°/s]')
+            axs.set_ylabel('Integral error y')
         elif i == 7:
             axs.plot(t, lista_x[i, :]*180/np.pi, colors[i])
             axs.set_title(titles[i])
             axs.set_xlabel('Tiempo [s]')
-            axs.set_ylabel('w [°/s]')
+            axs.set_ylabel('Integral error theta')
         plt.show()
 ### perfil de aceleracion
 def grafico_aceleracion(t, lista_x):
@@ -354,4 +354,58 @@ def grafico_aceleracion(t, lista_x):
     plt.title('Perfil de aceleración angular')
     plt.xlabel('Tiempo [s]')
     plt.ylabel('alpha [°/s^2]')
+    plt.show()
+
+
+### perfil de aceleracion
+def grafico_error(t, lista_error_x, lista_error_y, lista_error_a):
+    fig1 = plt.figure()
+    fig1.canvas.manager.set_window_title('Error de posición en x')
+    plt.title('Error de posición en x')
+    plt.plot(t, lista_error_x, 'r')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('X [m]')
+    plt.show()
+    fig2 = plt.figure()
+    fig2.canvas.manager.set_window_title('Error de posición en y')
+    plt.title('Error de posición en y')
+    plt.plot(t, lista_error_y, 'r')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('Y [m]')
+    plt.show()
+    fig3 = plt.figure()
+    fig3.canvas.manager.set_window_title('Error de posición en theta')
+    plt.title('Error de posición en theta')
+    plt.plot(t, lista_error_a*180/np.pi, 'r')
+    plt.xlabel('Tiempo [s]')
+    plt.ylabel('theta [°]')
+    plt.show()
+
+def calcular_ITAE(error):
+    lista_ITAE = []
+    for i in range(len(error)):
+        ITAE = np.sum(np.abs(error[:i]) * Ts)
+        lista_ITAE.append(ITAE)
+    return np.array(lista_ITAE)
+
+def funcion_objetivo(x, u, Q, R):
+    print(np.shape(x), np.shape(u), np.shape(Q), np.shape(R))
+    J = x.T.dot(Q).dot(x) + u.T.dot(R).dot(u)
+    #J = (ref - x.T).dot(Q).dot(ref - x) + u.T.dot(R).dot(u)
+    return J
+
+def funcion_objetivo_tiempo(lista_fo):
+    fo_sum = []
+    for i in range(len(lista_fo)):
+        fo_acum = np.sum(lista_fo[:i])
+        fo_sum.append(fo_acum)
+    return fo_sum
+
+def grafico_simple(x, y, title_x, title_y, title):
+    fig1 = plt.figure()
+    fig1.canvas.manager.set_window_title(title)
+    plt.title(title)
+    plt.plot(x, y, 'r')
+    plt.xlabel(title_x)
+    plt.ylabel(title_y)
     plt.show()

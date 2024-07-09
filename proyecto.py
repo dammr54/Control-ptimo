@@ -96,6 +96,9 @@ lista_estado_y_lqi = []
 lista_estado_a_lqi = []
 lista_estado_v_lqi = []
 lista_estado_w_lqi = []
+lista_estado_int_err_x_lqi = []
+lista_estado_int_err_y_lqi = []
+lista_estado_int_err_a_lqi = []
 
 def controller(model, data):
     global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
@@ -143,7 +146,7 @@ def controller(model, data):
         lista_estado_v_pid.append(estado[3])
         lista_estado_w_pid.append(estado[4])
     elif tipo_control == 2: # LQI
-        senal_control, ref_angle, err_posx, err_posy, err_a  = lqi_controller.calcular_control(estado, ref, jacob)
+        senal_control, ref_angle, err_posx, err_posy, err_a, int_err_posx, int_err_posy, int_err_a  = lqi_controller.calcular_control(estado, ref, jacob)
         data.ctrl[0] = senal_control[0]
         data.ctrl[1] = senal_control[1]
         lista_senal_control_lqi.append(senal_control)
@@ -158,6 +161,9 @@ def controller(model, data):
         lista_estado_a_lqi.append(estado[2])
         lista_estado_v_lqi.append(estado[3])
         lista_estado_w_lqi.append(estado[4])
+        lista_estado_int_err_x_lqi.append(int_err_posx)
+        lista_estado_int_err_y_lqi.append(int_err_posy)
+        lista_estado_int_err_a_lqi.append(int_err_a)
     lista_tiempo.append(data.time)
 
 
@@ -378,7 +384,10 @@ def main():
             'Lista10': lista_estado_y_lqi,
             'Lista11': lista_estado_a_lqi,
             'Lista12': lista_estado_v_lqi,
-            'Lista13': lista_estado_w_lqi
+            'Lista13': lista_estado_w_lqi,
+            'Lista14': lista_estado_int_err_x_lqi,
+            'Lista15': lista_estado_int_err_y_lqi,
+            'Lista16': lista_estado_int_err_a_lqi
         }
         # Guardar el diccionario en un archivo JSON
         with open('listas_datos_lqi.json', 'w') as file:
