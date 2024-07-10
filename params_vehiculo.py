@@ -13,7 +13,12 @@ b = 0.3 # efectos de friccion dinamica (roce aerodinamico y resistencia viscosa)
 
 # simulacion
 t0 = 0
-tf = 8.3 # Tiempo final 9.6, 11
+t1 = 2.5
+t2 = 5
+t3 = 10
+t4 = 15
+tf = 8.3 # Tiempo final 9.6, 11, no termina hasta cerrar pestana
+#tiempos referencia
 # matriz de covarianza del estado estimado
 P0 = np.array([[0.01, 0, 0, 0, 0],
                [0, 0.01, 0, 0, 0],
@@ -39,6 +44,14 @@ Qx = np.array([[10**(-4), 0, 0, 0, 0],
                [0, 0, 0, 0, 0.03]])
 
 sigma_vx_lqi = np.array([10**(-4), 10**(-4), 3*10**(-4), 0.01, 0.03, 10**(-4), 10**(-4), 10**(-4)])
+Qx_lqi = np.array([[10**(-4), 0, 0, 0, 0, 0, 0, 0],
+               [0, 10**(-4), 0, 0, 0, 0, 0, 0],
+               [0, 0, 3*10**(-4), 0, 0, 0, 0, 0],
+               [0, 0, 0, 0.01, 0, 0, 0, 0],
+               [0, 0, 0, 0, 0.03, 0, 0, 0],
+               [0, 0, 0, 0, 0, 10**(-4), 0, 0],
+               [0, 0, 0, 0, 0, 0, 10**(-4), 0],
+               [0, 0, 0, 0, 0, 0, 0, 10**(-4)]])
 # perturbaciones de entrada con media 0 y varianza Qu iid
 sigma_vu = np.array([2*10**(-4)*m*r, 2*10**(-4)*m*r])
 Qu = np.array([[2*10**(-4)*m*r, 0],
@@ -74,6 +87,8 @@ Rg = (np.pi*r**2/360)*np.array([[0.01, 0, 0, 0, 0],
                                 [0, 0, 0, 2./360.**2*np.pi, 0],
                                 [0, 0, 0, 0, 0],
                                 [0, 0, 0, 0, 0]])
+
+
 
 
 # matrices de costo LQI

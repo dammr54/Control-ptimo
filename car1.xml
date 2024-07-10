@@ -56,10 +56,10 @@
 
 	<!-- Sensors https://mujoco.readthedocs.io/en/stable/XMLreference.html#sensor -->
 	<sensor>
-		<framepos  objtype="site" objname="chassis_frame" />
-		<velocimeter name="sensor_vel" site="chassis_frame" />
-		<accelerometer name="sensor_accel" site="chassis_frame" />
-		<gyro name="sensor_gyro" site="chassis_frame" noise="0"/>
+		<framepos  objtype="site" objname="chassis_frame" noise="0" />
+		<velocimeter name="sensor_vel" site="chassis_frame" noise="0" />
+		<accelerometer name="sensor_accel" site="chassis_frame" noise="0" />
+		<gyro name="sensor_gyro" site="chassis_frame" noise="0" />
 		
 		<rangefinder site="rangefinder_frame" noise="0" />
 	</sensor>

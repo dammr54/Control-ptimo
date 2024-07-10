@@ -55,6 +55,8 @@ orientacion = np.zeros(3) # inicial [0, 0, 0]
 Kpa = 5; Kia = 0; Kda = 5
 Kpd = 1; Kid = 0.01; Kdd = 0
 estado = [0, 0, 0, 0, 0]
+x_k_k =  [0, 0, 0, 0, 0]
+P_k_k = P0
 # crear el controlador PID para el angulo y distancia
 pid_controller = PIDControl(Kpa, Kia, Kda, Kpd, Kid, Kdd, Ts)
 
@@ -101,7 +103,7 @@ lista_estado_int_err_y_lqi = []
 lista_estado_int_err_a_lqi = []
 
 def controller(model, data):
-    global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x
+    global Accel_lin_des, Accel_ang_des, Torque_R, Torque_L, x_k_k, P_k_k
     # posicion
     posx = data.qpos[0]
     posy = data.qpos[1]
@@ -123,6 +125,9 @@ def controller(model, data):
     orientacion[1] += vela_y * Ts
     orientacion[2] += vela_z * Ts
     estado = [posx, posy, orientacion[2], vel, vela_z]
+    # ruido sensor PID
+    w_sensor = sigma_wg*np.random.randn(len(sigma_wg))
+    medicion = [posx, posy, orientacion[2]] + w_sensor
     ref = referencias(data.time)
     if tipo_control == 0: # Manual
         Torque_R = Accel_lin_des/2 + Accel_ang_des/2
@@ -130,9 +135,13 @@ def controller(model, data):
         data.ctrl[0] = Torque_R
         data.ctrl[1] = Torque_L
     elif tipo_control == 1: # PID
-        senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(estado, ref)
-        data.ctrl[0] = senal_control[0]
-        data.ctrl[1] = senal_control[1]
+        u = np.array([Torque_R, Torque_L])
+        x_k_k, P_k_k = filtro_kalman_extendido(data.time, x_k_k, P_k_k, u, medicion, sigma_vx, Qx, Rg, 'GPS', 'GPS')
+        senal_control, ref_angle, err_posx, err_posy, err_a = pid_controller.calcular_control(x_k_k, ref)
+        Torque_R = senal_control[0]
+        Torque_L = senal_control[1]
+        data.ctrl[0] = Torque_R
+        data.ctrl[1] = Torque_L
         lista_senal_control_pid.append(senal_control)
         lista_ref_x_pid.append(ref[0])
         lista_ref_y_pid.append(ref[1])
@@ -146,9 +155,13 @@ def controller(model, data):
         lista_estado_v_pid.append(estado[3])
         lista_estado_w_pid.append(estado[4])
     elif tipo_control == 2: # LQI
-        senal_control, ref_angle, err_posx, err_posy, err_a, int_err_posx, int_err_posy, int_err_a  = lqi_controller.calcular_control(estado, ref, jacob)
-        data.ctrl[0] = senal_control[0]
-        data.ctrl[1] = senal_control[1]
+        u = np.array([Torque_R, Torque_L])
+        x_k_k, P_k_k = filtro_kalman_extendido(data.time, x_k_k, P_k_k, u, medicion, sigma_vx, Qx, Rg, 'GPS', 'GPS')
+        senal_control, ref_angle, err_posx, err_posy, err_a, int_err_posx, int_err_posy, int_err_a  = lqi_controller.calcular_control(x_k_k, ref, jacob)
+        Torque_R = senal_control[0]
+        Torque_L = senal_control[1]
+        data.ctrl[0] = Torque_R
+        data.ctrl[1] = Torque_L
         lista_senal_control_lqi.append(senal_control)
         lista_ref_x_lqi.append(ref[0])
         lista_ref_y_lqi.append(ref[1])
@@ -368,7 +381,9 @@ def main():
             'Lista13': lista_estado_w_pid
         }
         # Guardar el diccionario en un archivo JSON
-        with open('listas_datos_pid.json', 'w') as file:
+        nombre_archivo1 = 'listas_datos_pid.json'
+        nombre_archivo2 = 'listas_datos_pid_1setpoint.json'
+        with open(nombre_archivo2, 'w') as file:
             json.dump(datos, file)
     elif tipo_control == 2:
         datos = {
@@ -390,7 +405,9 @@ def main():
             'Lista16': lista_estado_int_err_a_lqi
         }
         # Guardar el diccionario en un archivo JSON
-        with open('listas_datos_lqi.json', 'w') as file:
+        nombre_archivo1 = 'listas_datos_lqi.json'
+        nombre_archivo2 = 'listas_datos_lqi_1setpoint.json'
+        with open(nombre_archivo2, 'w') as file:
             json.dump(datos, file)
 
 if __name__ == '__main__': main()

@@ -72,19 +72,24 @@ class PIDControl:
         return senal_control, ref_angle, err_posx, err_posy, err_a
     
 
-def referencias(t, t1=1.05, t2=5, t3=10, t4=15):
+def referencias(t, t1=2.5, t2=5, t3=10, t4=15):
     if t < t1:
         ref = [1, 1]
         #ref = [0, 2]
+        ref = [-1, -1] # 1 setpoint
     elif t >= t1 and t < t2:
         ref = [-1, 1]
+        ref = [-1, -1] # 1 setpoint
     elif t >= t2 and t < t3:
         ref = [-1, -1]
         #ref = [2, 0]
+        ref = [-1, -1] # 1 setpoint
     elif t >= t3 and t < t4:
         ref = [1, -1]
+        ref = [-1, -1] # 1 setpoint
     elif t >= t4:
         ref = [1, 1]
+        ref = [-1, -1] # 1 setpoint
     return ref
 
 def referencias_circular(t, k, frecuencia=1/10):
@@ -173,6 +178,19 @@ class LQIcontrol:
         self.int_err_posx += err_posx
         self.int_err_posy += err_posy
         self.int_err_a += err_a
+        # limitar integración de error 
+        if self.int_err_posx > 1250:
+            self.int_err_posx = 1250
+        elif self.int_err_posx < -1250:
+            self.int_err_posx = -1250
+        if self.int_err_posy > 1250:
+            self.int_err_posy = 1250
+        elif self.int_err_posy < -1250:
+            self.int_err_posy = -1250
+        if self.int_err_a > 800:
+            self.int_err_a = 800
+        elif self.int_err_a < -800:
+            self.int_err_a = -800
         estado = [estado[0], estado[1], estado[2], estado[3], estado[4], self.int_err_posx, self.int_err_posy, self.int_err_a]
 
         u_pid_pos = (self.Kpd_d + self.Kid_d + self.Kdd_d)*err_d - (self.Kpd_d + 2*self.Kdd_d)*self.prev_err1_d + self.Kdd_d*self.prev_err2_d
@@ -204,51 +222,31 @@ class LQIcontrol:
         #lista_valor_fo.append(fo)
         #print(k*Ts)
         return self.u_prev.tolist(), ref_angle, err_posx, err_posy, err_a, self.int_err_posx, self.int_err_posy, self.int_err_a
-    
 
-def filtro_kalman_extendido(x0, P0, sigma_v, Q_k, R_k, lista_entradas, sensor):
-    x = x0.reshape((1, len(x0))) # estado real con perturbaciones
-    x_k_k = x0.reshape((1, len(x0))) # estado estimado
-    x_k1_k = x0.reshape((1, len(x0))) # estado predicho
-    z_k = modelo_sensor(x0, lista_entradas[0, :], sensor) # vector de medicion
+def filtro_kalman_extendido(t, x_k_k, P_k_k, u, z_k1, sigma_vx, Q_k, R_k, jacob, sensor):
+    # jacobianos del modelo continuo
+    A, B, G, C, D, H = jacobianos_vehiculo(x_k_k, u, jacob)
+    # jacobianos modelo discreto#
+    Ad = expm(A*Ts)
+    Bd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(B)
+    Gd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(G)
+    A = Ad
+    B = Bd
+    G = Gd
+    # Predicción por integración exacta del modelo linealizado
+    t_aux, x_aux = step_model(modelo_vehiculo, u, sigma_vx, t, Ts, x_k_k)
+    x_k1_k = (x_aux.T)[-1,:]                                             # x_{k|k-1}
+    z_k1_k_aux = C.dot(x_k1_k) + D.dot(u)                                # z_{k|k-1}
+    # prediccion de matriz de covarianza
+    P_k1_k_aux = (A.dot(P_k_k)).dot(A.T) + (G.dot(Q_k)).dot(G.T)         # Px_{k|k-1}
+    S_k1_k_aux = (C.dot(P_k1_k_aux)).dot(C.T) + (H.dot(R_k)).dot(H.T)    # S_{k|k-1}
+    # Actualizacion/correccion del estado y covarianza del proceso
+    e = z_k1 - z_k1_k_aux                                            # e_{k}
+    K = (P_k1_k_aux.dot(C.T)).dot(np.linalg.inv(S_k1_k_aux))             # K_{k}
+    x_k_k = x_k1_k + K.dot(e)                                 # x_{k|k}
+    P_k_k= P_k1_k_aux - (K.dot(S_k1_k_aux)).dot(K.T)                # P_{k|k}
+    return x_k_k, P_k_k
 
-    P_k_k = P0[np.newaxis,...] # matriz de covarianza del estado estimado
-    P_k1_k = P0[np.newaxis,...] # matriz de covarianza del estado predicho
-
-    # calcular iteraciones del filtro
-    for k in range(len(t)-1):
-        t_aux, x_aux = step_model(modelo_vehiculo, lista_entradas[k,:], 0*sigma_v, t[k], Ts, x[k, :])
-        x = np.vstack((x,(x_aux.T)[-1,:])) # medicion real
-        # jacobianos del modelo continuo
-        A, B, G, C, D, H = jacobianos_vehiculo(x_k_k[k,:], lista_entradas[k,:], sensor)
-        # jacobianos modelo discreto
-        Ad = expm(A*Ts)
-        Bd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(B)
-        Gd = ((Ad*Ts).dot(np.eye(len(Ad))-A*Ts/2.)).dot(G)
-        A = Ad
-        B = Bd
-        G = Gd
-        # Predicción por integración exacta del modelo linealizado
-        t_aux, x_aux = step_model(modelo_vehiculo, lista_entradas[k,:], sigma_v, t[k], Ts, x_k_k[k,:])
-        x_k1_k_aux = (x_aux.T)[-1,:]
-        x_k1_k = np.vstack((x_k1_k, x_k1_k_aux))                             # Store x_{k|k-1}
-        z_k1_k_aux = C.dot(x_k1_k[k+1, :]) + D.dot(lista_entradas[k,:])      # z_{k|k-1}
-        #x_k1_k = Ts*modelo_auto(t[k], x[k, :], lista_entradas[k,:], 0*sigma_v) + x_k_k[k, :]
-        #z_k1_k_aux = modelo_sensor(x_k1_k[k+1, :], lista_entradas[k,:], 0*sigma_w)
-        # prediccion de matriz de covarianza
-        P_k1_k_aux = (A.dot(P_k_k[k,:,:])).dot(A.T) + (G.dot(Q_k)).dot(G.T)  # Px_{k|k-1}
-        S_k1_k_aux = (C.dot(P_k1_k_aux)).dot(C.T) + (H.dot(R_k)).dot(H.T)    # S_{k|k-1}
-        # Actualizacion/correccion del estado y covarianza del proceso
-        z_k1_aux = modelo_sensor(x[k+1,:], lista_entradas[k,:], sensor)           # z_{k}
-        e = z_k1_aux - z_k1_k_aux                                            # e_{k}
-        K = (P_k1_k_aux.dot(C.T)).dot(np.linalg.inv(S_k1_k_aux))             # K_{k}
-        x_k_k_aux = x_k1_k[k+1,:] + K.dot(e)                                 # x_{k|k}
-        P_k_k_aux = P_k1_k_aux - (K.dot(S_k1_k_aux)).dot(K.T)                # P_{k|k}
-        z_k = np.vstack((z_k, z_k1_aux))                                     # Store z_{k}
-        x_k_k = np.vstack((x_k_k, x_k_k_aux))                                # Store x_{k|k}
-        P_k_k = np.vstack((P_k_k, P_k_k_aux[np.newaxis,...]))                # Store P_{k|k}
-
-    
 # graficos
 ## grafico de posicion x versus y con vector de orientacion
 def grafico_xy_orientacion(lista_x, lista_y, lista_ref_x, lista_ref_y):
@@ -262,7 +260,7 @@ def grafico_xy_orientacion(lista_x, lista_y, lista_ref_x, lista_ref_y):
     fig0.canvas.manager.set_window_title('Trayectoria')
     ax.plot(x, y, 'o-', label='Posición', zorder=1)
     ax.plot(lista_ref_x, lista_ref_y, '--k', label='referencia')
-    ax.quiver(origen_x, origen_y, dx, dy, scale=2, scale_units='xy', angles='xy', color='r', label='Vector de dirección', zorder = 5)
+    ax.quiver(origen_x, origen_y, dx, dy, scale=3, scale_units='xy', angles='xy', color='r', label='Vector de dirección', zorder = 5)
     ax.set_xlim(min(x) - 1, max(x) + 1)
     ax.set_ylim(min(y) - 1, max(y) + 1)
     ax.set_title('Trayectoria X versus Y')
@@ -389,7 +387,6 @@ def calcular_ITAE(error):
     return np.array(lista_ITAE)
 
 def funcion_objetivo(x, u, Q, R):
-    print(np.shape(x), np.shape(u), np.shape(Q), np.shape(R))
     J = x.T.dot(Q).dot(x) + u.T.dot(R).dot(u)
     #J = (ref - x.T).dot(Q).dot(ref - x) + u.T.dot(R).dot(u)
     return J
@@ -409,3 +406,91 @@ def grafico_simple(x, y, title_x, title_y, title):
     plt.xlabel(title_x)
     plt.ylabel(title_y)
     plt.show()
+
+def tiempo_respuesta(t, err_x, err_y, err_a, refx, refy, refa, tolerancia=0.05):
+    # tolerancia con respecto a 1 metro de distancia
+    verificacion = [False, False, False, False]
+    tiempo_establecimiento = []
+    nuevo_tiempo_establecimiento = []
+    tiempos_inicio = [0, 2.5, 5, 10]
+    for i in range(len(t)):
+        ref = [refx[i], refy[i]]
+        if ref == [1, 1] and verificacion[0] == False:
+            if np.abs(err_x[i]) <= tolerancia and np.abs(err_y[i]) <= tolerancia:
+                tiempo_establecimiento.append(t[i] - tiempos_inicio[0])
+                verificacion[0] = True
+        if ref == [-1, 1] and verificacion[1] == False:
+            if np.abs(err_x[i]) <= tolerancia and np.abs(err_y[i]) <= tolerancia:
+                tiempo_establecimiento.append(t[i] - tiempos_inicio[1])
+                verificacion[1] = True
+        if ref == [-1, -1] and verificacion[2] == False:
+            if np.abs(err_x[i]) <= tolerancia and np.abs(err_y[i]) <= tolerancia:
+                tiempo_establecimiento.append(t[i] - tiempos_inicio[2])
+                verificacion[2] = True
+        if ref == [1, -1] and verificacion[3] == False:
+            if np.abs(err_x[i]) <= tolerancia and np.abs(err_y[i]) <= tolerancia:
+                tiempo_establecimiento.append(t[i] - tiempos_inicio[3])
+                verificacion[3] = True
+    elemento = 0
+    for i in range(len(verificacion)):
+        if verificacion[i] == True:
+            nuevo_tiempo_establecimiento.append(tiempo_establecimiento[elemento])
+            elemento += 1
+        else:
+            nuevo_tiempo_establecimiento.append(None)
+    return nuevo_tiempo_establecimiento
+
+
+def tiempo_respuesta_1setpoint(t, err_x, err_y, err_a, refx, refy, refa, tolerancia=0.05):
+    # tolerancia con respecto a 1 metro de distancia
+    verificacion = False
+    tiempo_establecimiento = None
+    for i in range(len(t)):
+        if verificacion == False:
+            if abs(err_x[i]) <= tolerancia and abs(err_y[i]) <= tolerancia:
+                tiempo_establecimiento = t[i]
+                verificacion = True
+    return tiempo_establecimiento
+
+
+def tiempo_establecimiento(t, err_x, err_y, err_a, tolerancia=0.05):
+    # Crear una lista de 0 y 1 basado en el umbral
+    binarios = []
+    for i in range(len(t)):
+        if err_x[i] <= tolerancia and err_y[i] <= tolerancia:
+            binarios.append(1)
+        else:
+            binarios.append(0)
+    # si valor es igual a 1 verificar si hay valores 0 delante de el
+    indice = None
+    for i in range(len(binarios)):
+        if binarios[i] == 1:
+            comprobar = True
+            for j in range(i, len(binarios)):
+                if binarios[j] == 0:
+                    comprobar = False
+                    break
+            if comprobar == True:
+                indice = i
+    if indice != None:
+        retorno = f'{t[indice]} s'
+    else:
+        retorno = 'No se establece en tiempo determinado, tiene una respuesta oscilatoria'
+    return retorno
+
+# caso 1 setpoint
+def error_regimen_permanente(t, err_x, err_y, err_a, tiempo_respuesta):
+    nuevo_tiempo_respuesta = []
+    for elemento in tiempo_respuesta:
+        if elemento == None:
+            nuevo_tiempo_respuesta.append(0)
+        else:
+            nuevo_tiempo_respuesta.append(elemento)
+
+    for i in range(len(nuevo_tiempo_respuesta)):
+        for j in range(len(t)):
+            if t[j] >= nuevo_tiempo_respuesta[i]:
+                error_regimen_x = np.sqrt(np.mean(err_x[j:]**2))
+                error_regimen_y = np.sqrt(np.mean(err_y[j:]**2))
+                error_regimen_a = np.sqrt(np.mean(err_a[j:]**2))
+    return error_regimen_x, error_regimen_y, error_regimen_a

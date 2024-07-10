@@ -21,7 +21,7 @@
 import numpy as np
 from params_vehiculo import *
 
-def modelo_vehiculo(t, x, u, sigma_v):
+def modelo_vehiculo(t, x, u, sigma_vx):
     # restricciones de control 
 
     # actualizacion de angulo en cada vuelta
@@ -31,7 +31,7 @@ def modelo_vehiculo(t, x, u, sigma_v):
         x[2] = x[2] + 2*np.pi
     
     # perturbacion v ???
-    v = sigma_v*np.random.randn(len(sigma_v)) # '*' is the element-wise multiplication
+    v = sigma_vx*np.random.randn(len(sigma_vx)) # '*' is the element-wise multiplication
                                               # when using NumPy arrays.
     
     cos_x2 = np.cos(x[2])
@@ -58,8 +58,7 @@ def modelo_vehiculo(t, x, u, sigma_v):
              x[3]*sen_x2,  # y_dot
              x[4],           # theta_dot
              1/(m*r)*(u[0] + u[1]) - c/m*x[3],       # velocidad lineal
-             W/(2*J*r)*(u[0] - u[1]) - b/J*x[4]])      # omega_dot
-
+             W/(2*J*r)*(u[0] - u[1]) - b/J*x[4]]) + v     # omega_dot
     return xdot
 
 def main(): # Test modelo_avion

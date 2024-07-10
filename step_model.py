@@ -4,15 +4,14 @@ from scipy.integrate import solve_ivp
 from functools import partial 
 
 # t, x = step_model(model,u,sigma_v,t0,step_size,x0)
-def step_model(model, u, sigma_v, t0, step_size, x0):
-
+def step_model(model, u, sigma_vx, t0, step_size, x0):
     tfinal=t0 + step_size
     #Nsamples = 10+1
     #Nsamples = 1+1
     #tX = np.linspace(t0, tfinal, Nsamples)
 
     # solve_ivp
-    x = solve_ivp(partial(model, u=u, sigma_v=sigma_v), (t0, tfinal), x0, method='RK45')
+    x = solve_ivp(partial(model, u=u, sigma_vx=sigma_vx), (t0, tfinal), x0, method='RK45')
     # la siguiente linea es utilizada para el filtro de particulas
     #x = solve_ivp(partial(model, u=u, sigma_v=sigma_v), (t0,tfinal), x0, method='BDF')
     return x.t, x.y
