@@ -383,8 +383,8 @@ def main():
         # Guardar el diccionario en un archivo JSON
         nombre_archivo1 = 'listas_datos_pid.json'
         nombre_archivo2 = 'listas_datos_pid_1setpoint.json'
-        with open(nombre_archivo2, 'w') as file:
-            json.dump(datos, file)
+        #with open(nombre_archivo2, 'w') as file:
+        #    json.dump(datos, file)
     elif tipo_control == 2:
         datos = {
             'Lista1': lista_tiempo,
@@ -407,7 +407,7 @@ def main():
         # Guardar el diccionario en un archivo JSON
         nombre_archivo1 = 'listas_datos_lqi.json'
         nombre_archivo2 = 'listas_datos_lqi_1setpoint.json'
-        with open(nombre_archivo2, 'w') as file:
-            json.dump(datos, file)
+        #with open(nombre_archivo2, 'w') as file:
+        #    json.dump(datos, file)
 
 if __name__ == '__main__': main()

@@ -76,20 +76,20 @@ def referencias(t, t1=2.5, t2=5, t3=10, t4=15):
     if t < t1:
         ref = [1, 1]
         #ref = [0, 2]
-        ref = [-1, -1] # 1 setpoint
+        #ref = [-1, -1] # 1 setpoint
     elif t >= t1 and t < t2:
         ref = [-1, 1]
-        ref = [-1, -1] # 1 setpoint
+        #ref = [-1, -1] # 1 setpoint
     elif t >= t2 and t < t3:
         ref = [-1, -1]
         #ref = [2, 0]
-        ref = [-1, -1] # 1 setpoint
+        #ref = [-1, -1] # 1 setpoint
     elif t >= t3 and t < t4:
         ref = [1, -1]
-        ref = [-1, -1] # 1 setpoint
+        #ref = [-1, -1] # 1 setpoint
     elif t >= t4:
         ref = [1, 1]
-        ref = [-1, -1] # 1 setpoint
+        #ref = [-1, -1] # 1 setpoint
     return ref
 
 def referencias_circular(t, k, frecuencia=1/10):
@@ -179,18 +179,18 @@ class LQIcontrol:
         self.int_err_posy += err_posy
         self.int_err_a += err_a
         # limitar integración de error 
-        if self.int_err_posx > 1250:
-            self.int_err_posx = 1250
-        elif self.int_err_posx < -1250:
-            self.int_err_posx = -1250
-        if self.int_err_posy > 1250:
-            self.int_err_posy = 1250
-        elif self.int_err_posy < -1250:
-            self.int_err_posy = -1250
-        if self.int_err_a > 800:
-            self.int_err_a = 800
-        elif self.int_err_a < -800:
-            self.int_err_a = -800
+        if self.int_err_posx > 500:
+            self.int_err_posx = 500
+        elif self.int_err_posx < -500:
+            self.int_err_posx = -500
+        if self.int_err_posy > 500:
+            self.int_err_posy = 500
+        elif self.int_err_posy < -500:
+            self.int_err_posy = -500
+        if self.int_err_a > 400:
+            self.int_err_a = 400
+        elif self.int_err_a < -400:
+            self.int_err_a = -400
         estado = [estado[0], estado[1], estado[2], estado[3], estado[4], self.int_err_posx, self.int_err_posy, self.int_err_a]
 
         u_pid_pos = (self.Kpd_d + self.Kid_d + self.Kdd_d)*err_d - (self.Kpd_d + 2*self.Kdd_d)*self.prev_err1_d + self.Kdd_d*self.prev_err2_d
@@ -283,7 +283,7 @@ def grafico_torques_entrada(t, lista_entradas):
     plt.show()
 ### grafico de variables de estado
 def grafico_estado(t, lista_x, lista_ref_x, lista_ref_y, lista_ref_angle):
-    titles = ['Posición X [m]', 'Posición Y [m]', 'Ángulo [°]', 'Velocidad angular [rad/s]', 'Velocidad lineal [m/s]', 'Integral error x', 'Integral error y', 'Integral error theta']
+    titles = ['Posición X [m]', 'Posición Y [m]', 'Ángulo [°]', 'Velocidad lineal [m/s]', 'Velocidad angular [°/s]', 'Integral error x', 'Integral error y', 'Integral error theta']
     colors = ['r', 'b', 'g', 'm', 'c', 'k', 'r', 'r', 'r']
     for i in range(len(lista_x)):
         fig2, axs = plt.subplots()
@@ -494,3 +494,69 @@ def error_regimen_permanente(t, err_x, err_y, err_a, tiempo_respuesta):
                 error_regimen_y = np.sqrt(np.mean(err_y[j:]**2))
                 error_regimen_a = np.sqrt(np.mean(err_a[j:]**2))
     return error_regimen_x, error_regimen_y, error_regimen_a
+
+def grafico_conjunto(x1, y1, x2, y2, title_x, title_y, title):
+    tamano = min(len(y1), len(y2))
+    x = x1[:tamano]
+    y1 = y1[:tamano]
+    y2 = y2[:tamano]
+    fig1 = plt.figure()
+    fig1.canvas.manager.set_window_title(title)
+    plt.title(title)
+    plt.plot(x, y1, 'r', label='PID')
+    plt.plot(x, y2, 'b', label='LQI')
+    plt.xlabel(title_x)
+    plt.ylabel(title_y)
+    plt.legend()
+    plt.show()
+
+## grafico de torques de entrada para cada actuador
+def grafico_torques_entrada_conjunto(x1, y1, x2, y2):
+    tamano = min(len(y1), len(y2))
+    x = x1[:tamano]
+    y1 = y1[:tamano]
+    y2 = y2[:tamano]
+    fig1, (ax1, ax2) = plt.subplots(2, 1)
+    fig1.canvas.manager.set_window_title('Entradas')
+    ax1.plot(x, y1[:, 0], 'r', label='PID', linewidth = 3)
+    ax1.plot(x, y2[:, 0], 'b', label='LQI')
+    ax1.set_title('Entrada actuador derecho')
+    ax1.set_ylabel('Td [Nm]')
+    ax1.legend()
+    ax2.plot(x, y1[:, 1], 'r', label='PID', linewidth = 3)
+    ax2.plot(x, y2[:, 1], 'b', label='LQI')
+    ax2.set_title('Entrada actuador izquierdo')
+    ax2.set_xlabel('Tiempo [s]')
+    ax2.set_ylabel('Ti [Nm]')
+    ax2.legend()
+    plt.tight_layout()
+    plt.show()
+
+def energia_acumulada(senal_control):
+    senal_control_acum = []
+    for i in range(len(senal_control)):
+        senal_acum = np.sum(senal_control[:i]**2)
+        senal_control_acum.append(senal_acum)
+    return senal_control_acum
+
+## grafico de torques de entrada para cada actuador
+def grafico_energia_acumulada_conjunto(x1, y1, x2, y2):
+    tamano = min(len(y1), len(y2))
+    x = x1[:tamano]
+    y1 = y1[:tamano]
+    y2 = y2[:tamano]
+    fig1, (ax1, ax2) = plt.subplots(2, 1)
+    fig1.canvas.manager.set_window_title('Entradas')
+    ax1.plot(x, y1[:, 0], 'r', label='PID', linewidth = 3)
+    ax1.plot(x, y2[:, 0], 'b', label='LQI')
+    ax1.set_title('Señal de control derecha cuadrada acumulada')
+    ax1.set_ylabel('Energia')
+    ax1.legend()
+    ax2.plot(x, y1[:, 1], 'r', label='PID', linewidth = 3)
+    ax2.plot(x, y2[:, 1], 'b', label='LQI')
+    ax2.set_title('Señal de control izquierda cuadrada acumulada')
+    ax2.set_xlabel('Tiempo [s]')
+    ax2.set_ylabel('Energia')
+    ax2.legend()
+    plt.tight_layout()
+    plt.show()

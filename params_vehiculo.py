@@ -89,6 +89,17 @@ Rg = (np.pi*r**2/360)*np.array([[0.01, 0, 0, 0, 0],
                                 [0, 0, 0, 0, 0]])
 
 
+# costos funcion objetivo PID
+# matrices de costo LQI
+Q_pid = np.array([[0.005,0.,0.,0.,0.],
+                  [0.,0.005,0,0.,0.],
+                  [0.,0.,0.001,0,0.],
+                  [0.,0.,0.,0.001,0.],
+                  [0.,0.,0.,0.,0.008]])
+R_pid = np.array([[0.5, 0.0],
+                  [0.0, 0.5]])
+
+
 
 
 # matrices de costo LQI
